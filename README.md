@@ -1,60 +1,42 @@
 # FC Landen — Trainingsplanning PWA
 
-Een Progressive Web App voor het beheren van trainingsplanning, terreinverdeling en kleedkamers voor FC Landen.
+Progressive Web App voor trainingsplanning, terreinbeheer en kleedkamerverdeling van FC Landen.
 
-## 🚀 Live app
-
-Na het instellen van GitHub Pages is de app beschikbaar op:
+## Live app
 `https://<jouw-gebruikersnaam>.github.io/fc-landen/`
 
-## 📱 Installeren als app
-
+## Installeren als app
 1. Open de link in Chrome (Android) of Safari (iPhone)
-2. Tik op **"Installeren"** in de banner, of via het menu → "Toevoegen aan beginscherm"
-3. De app werkt daarna ook **offline**
+2. Tik op **"Installeren"** of via menu → "Toevoegen aan beginscherm"
 
-## ✨ Functies
+## Functies
+- **Teams** — trainingsschema per ploeg, trainingen toevoegen/verwijderen
+- **Kalender** — weekoverzicht met drag & drop (dag én blok wisselen, terrein kiezen)
+- **Terreinen** — bezettingsgraad per terrein
+- **Kleedkamers** — automatische verdeling + drag & drop om te wisselen
+- **Overzicht** — statistieken + bezettingsgrafiek
+- Offline werking, automatisch opslaan
 
-- **Teams** — overzicht per ploeg met trainingsschema
-- **Kalender** — weekoverzicht in twee blokken (vroeg 18:00–19:15 / laat 19:30–21:00)
-- **Terreinen** — bezettingsgraad per terrein (Kunstgras, B-veld, C-veld)
-- **Kleedkamers** — automatische verdeling van 6 kleedkamers per dag/blok
-- **Overzicht** — terreinstatistieken per ploeg + bezettingsgrafiek
-- **Offline werking** via Service Worker
-- **Automatisch opslaan** van wijzigingen in de browser
+## GitHub Pages instellen
+1. Push naar een **public** repository
+2. Settings → Pages → Source: **GitHub Actions**
+3. Na de eerste push is de app live
 
-## 🏗️ Deployment instellen
+## Lokaal testen
+```bash
+python3 -m http.server 8080
+# open http://localhost:8080
+```
 
-1. **Fork of push** dit project naar een GitHub repository
-2. Ga naar **Settings → Pages**
-3. Onder **Source**: kies **GitHub Actions**
-4. Push naar `main` → de app wordt automatisch gedeployed
-
-## 📁 Projectstructuur
-
+## Bestanden
 ```
 fc-landen/
-├── index.html          # Volledige PWA app (één bestand)
-├── manifest.json       # PWA manifest (naam, iconen, kleuren)
-├── sw.js               # Service Worker (offline caching)
+├── index.html          # Volledige app
+├── manifest.json       # PWA manifest
+├── sw.js               # Service Worker (offline)
 ├── icons/
-│   ├── icon-192.png    # App icoon (klein)
-│   └── icon-512.png    # App icoon (groot)
-└── .github/
-    └── workflows/
-        └── deploy.yml  # Automatische deployment naar GitHub Pages
+│   ├── icon-192.png
+│   └── icon-512.png
+└── .github/workflows/
+    └── deploy.yml      # Auto-deployment
 ```
-
-## 🛠️ Lokaal testen
-
-```bash
-# Simpele lokale server (Python)
-python3 -m http.server 8080
-
-# Of met Node.js
-npx serve .
-```
-
-Open dan `http://localhost:8080` in je browser.
-
-> ⚠️ Service Workers werken alleen op HTTPS of localhost — test dus lokaal of via GitHub Pages.

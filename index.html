@@ -9,6 +9,13 @@
 <meta name="apple-mobile-web-app-title" content="FC Landen">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#1a5c2e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FC Landen">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FC Landen — Trainingsplanning</title>
@@ -149,6 +156,15 @@ main { max-width: 1400px; margin: 0 auto; padding: 1.75rem 1.5rem; }
 
 
 
+
+
+/* KK DRAG & DROP */
+.kk-slot { cursor: grab; user-select: none; transition: opacity 0.15s; }
+.kk-slot:active { cursor: grabbing; }
+.kk-slot.kk-dragging { opacity: 0.3; }
+.kk-slot * { pointer-events: none; }
+.kk-cell.kk-drag-over { background: rgba(201,168,76,0.2); outline: 2px dashed var(--gold); outline-offset: -2px; }
+.kk-cell.kk-drag-full { background: rgba(192,57,43,0.08); outline: 2px dashed var(--red); outline-offset: -2px; }
 
 /* KLEEDKAMERS */
 .kk-grid { display: grid; grid-template-columns: 110px repeat(5, 1fr); gap: 0; border: 1px solid var(--gray-light); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); background: white; margin-bottom: 1.5rem; }
@@ -820,56 +836,131 @@ function kkSlotClass(cat) {
   return 'oud';
 }
 
+// KK handmatige overrides: sleutel = dag+'_'+namen, waarde = kkNr (0-based)
+let kkOverrides = {};
+
+function kkKeyStr(dag, namen) { return dag + '_' + namen.join('|'); }
+
+function verdeelMetOverrides(dag, eenheden) {
+  const kks = Array.from({length: N_KK}, () => []);
+  const metOvr = [], zonderOvr = [];
+  eenheden.forEach(e => {
+    const k = kkKeyStr(dag, e.namen);
+    (kkOverrides[k] !== undefined ? metOvr : zonderOvr).push(e);
+  });
+  // Overrides eerst plaatsen
+  metOvr.forEach(e => {
+    const nr = kkOverrides[kkKeyStr(dag, e.namen)];
+    if (kks[nr].length < 2) kks[nr].push(e);
+    else zonderOvr.push(e);
+  });
+  // Rest met leeftijdslogica
+  zonderOvr.forEach(e => {
+    let placed = false;
+    for (let i = 0; i < N_KK; i++) {
+      if (kks[i].length === 0) { kks[i].push(e); placed = true; break; }
+      if (kks[i].length < 2 && kkMogenSamen(kks[i][0].cat, e.cat)) { kks[i].push(e); placed = true; break; }
+    }
+    if (!placed) for (let i = 0; i < N_KK; i++) { if (kks[i].length < 2) { kks[i].push(e); break; } }
+  });
+  return kks;
+}
+
+let kkDrag = null; // { dag, namen, vanNr }
+
 function renderKleedkamers() {
   const container = document.getElementById('kk-container');
-  const BLOKKEN = [
-    { key: 'vroeg', label: '🌅 Vroeg blok — 18:00–19:15' },
-    { key: 'laat',  label: '🌙 Laat blok — 19:30–21:00'  },
-  ];
+  container.innerHTML = '';
 
-  let html = '';
+  const title = document.createElement('h3');
+  title.style.cssText = 'font-family:"Bebas Neue",sans-serif;font-size:1.3rem;letter-spacing:1.5px;color:var(--green);margin-bottom:0.75rem';
+  title.textContent = 'Kleedkamerverdeling per dag (vroeg + laat samen) — sleep om te wisselen';
+  container.appendChild(title);
 
-  BLOKKEN.forEach(blok => {
-    // Check of er iets is in dit blok
-    const heeftData = DAGEN_WEEK.some(dag => getEenheden(dag, blok.key).length > 0);
-    if (!heeftData) return;
+  const gridEl = document.createElement('div');
+  gridEl.className = 'kk-grid';
 
-    html += `<div class="kk-sectie"><h3>${blok.label}</h3>`;
-    html += '<div class="kk-grid">';
-
-    // Header
-    html += '<div class="kk-hdr"></div>';
-    DAGEN_WEEK.forEach(dag => {
-      html += `<div class="kk-hdr">${dag.substring(0,2)}</div>`;
-    });
-
-    // 6 kleedkamerrijen
-    for (let kkNr = 1; kkNr <= N_KK; kkNr++) {
-      html += `<div class="kk-row-label">KK ${kkNr}</div>`;
-      DAGEN_WEEK.forEach(dag => {
-        const eenheden = getEenheden(dag, blok.key);
-        const kks = verdeelKleedkamers(eenheden);
-        const kk = kks[kkNr - 1];
-
-        html += '<div class="kk-cell">';
-        if (!kk) {
-          html += '<div class="kk-leeg">—</div>';
-        } else {
-          kk.eenheden.forEach(e => {
-            const cls = kkSlotClass(e.cat);
-            html += `<div class="kk-slot ${cls}">`;
-            e.namen.forEach(naam => { html += `<div>${naam}</div>`; });
-            html += '</div>';
-          });
-        }
-        html += '</div>';
-      });
-    }
-
-    html += '</div></div>';
+  // Header
+  const emHdr = document.createElement('div'); emHdr.className = 'kk-hdr'; gridEl.appendChild(emHdr);
+  DAGEN_WEEK.forEach(dag => {
+    const h = document.createElement('div'); h.className = 'kk-hdr'; h.textContent = dag.substring(0,2); gridEl.appendChild(h);
   });
 
-  container.innerHTML = html || '<p style="color:var(--gray)">Geen trainingen gevonden.</p>';
+  for (let nr = 0; nr < N_KK; nr++) {
+    const lbl = document.createElement('div');
+    lbl.className = 'kk-row-label';
+    lbl.textContent = 'KK ' + (nr+1);
+    gridEl.appendChild(lbl);
+
+    DAGEN_WEEK.forEach(dag => {
+      const all = getEenhedenDag(dag);
+      const kks = verdeelMetOverrides(dag, all);
+      const slot_list = kks[nr];
+
+      const cell = document.createElement('div');
+      cell.className = 'kk-cell';
+
+      // Drop handlers
+      cell.addEventListener('dragover', ev => {
+        ev.preventDefault();
+        if (!kkDrag || kkDrag.dag !== dag) return;
+        const alIn = slot_list.some(e => e.namen.join('|') === kkDrag.namen.join('|'));
+        const vol = slot_list.length >= 2 && !alIn;
+        cell.classList.toggle('kk-drag-over', !vol);
+        cell.classList.toggle('kk-drag-full', vol);
+        ev.dataTransfer.dropEffect = vol ? 'none' : 'move';
+      });
+      cell.addEventListener('dragleave', () => cell.classList.remove('kk-drag-over','kk-drag-full'));
+      cell.addEventListener('drop', ev => {
+        ev.preventDefault();
+        cell.classList.remove('kk-drag-over','kk-drag-full');
+        if (!kkDrag || kkDrag.dag !== dag) return;
+        const alIn = slot_list.some(e => e.namen.join('|') === kkDrag.namen.join('|'));
+        if (slot_list.length >= 2 && !alIn) { showToast('⚠️ KK ' + (nr+1) + ' is al vol'); kkDrag = null; return; }
+        kkOverrides[kkKeyStr(dag, kkDrag.namen)] = nr;
+        showToast('✓ ' + kkDrag.namen[0] + ' → KK ' + (nr+1));
+        kkDrag = null;
+        renderKleedkamers();
+      });
+
+      if (slot_list.length === 0) {
+        const leeg = document.createElement('div');
+        leeg.className = 'kk-leeg'; leeg.textContent = '—'; leeg.style.pointerEvents = 'none';
+        cell.appendChild(leeg);
+      } else {
+        slot_list.forEach(e => {
+          const s = document.createElement('div');
+          s.className = 'kk-slot ' + kkSlotClass(e.cat);
+          s.draggable = true;
+          s.innerHTML = (e.blok==='vroeg'?'🌅 ':'🌙 ') + e.namen.map(n=>'<div>'+n+'</div>').join('');
+
+          s.addEventListener('dragstart', ev => {
+            kkDrag = { dag, namen: e.namen, vanNr: nr };
+            s.classList.add('kk-dragging');
+            ev.dataTransfer.effectAllowed = 'move';
+            ev.dataTransfer.setData('text/plain', e.namen.join('+'));
+          });
+          s.addEventListener('dragend', () => {
+            s.classList.remove('kk-dragging');
+            kkDrag = null;
+            document.querySelectorAll('.kk-drag-over,.kk-drag-full').forEach(el => el.classList.remove('kk-drag-over','kk-drag-full'));
+          });
+          cell.appendChild(s);
+        });
+      }
+      gridEl.appendChild(cell);
+    });
+  }
+  container.appendChild(gridEl);
+
+  // Reset knop
+  const btn = document.createElement('button');
+  btn.textContent = '↺ Automatische verdeling herstellen';
+  btn.style.cssText = 'margin-top:1rem;background:none;border:1.5px solid var(--gray-light);color:var(--gray);border-radius:8px;padding:0.5rem 1.1rem;font-family:"DM Sans",sans-serif;font-size:0.84rem;cursor:pointer;';
+  btn.onmouseover = () => { btn.style.borderColor='var(--green)'; btn.style.color='var(--green)'; };
+  btn.onmouseout  = () => { btn.style.borderColor='var(--gray-light)'; btn.style.color='var(--gray)'; };
+  btn.onclick = () => { kkOverrides = {}; renderKleedkamers(); showToast('✓ Automatische verdeling hersteld'); };
+  container.appendChild(btn);
 }
 
 function renderBezetting() {
@@ -1432,6 +1523,19 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW:', e));
   });
 }
+
+// ── GLOBALE FUNCTIES VOOR ONCLICK HANDLERS ──────────
+window.showView = showView;
+window.openTrainingModal = openTrainingModal;
+window.openTeamModal = openTeamModal;
+window.changeWeek = changeWeek;
+window.closeModal = closeModal;
+window.saveTraining = saveTraining;
+window.saveTeam = saveTeam;
+window.deleteTraining = deleteTraining;
+window.resetState = resetState;
+window.onTeamChange = onTeamChange;
+window.onBlokChange = onBlokChange;
 
 </script>
 </body>
