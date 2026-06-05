@@ -338,6 +338,38 @@ body { overscroll-behavior: none; }
   .page-title { font-size: 1.5rem !important; }
 }
 
+/* KALENDER KLIK-SELECTIE */
+.blok-event { cursor: pointer; user-select: none; position: relative; transition: transform 0.1s, box-shadow 0.1s; }
+.blok-event:hover { transform: scale(1.02); }
+.blok-event.geselecteerd {
+  outline: 3px solid var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(201,168,76,0.3);
+  transform: scale(1.03);
+  z-index: 10;
+}
+.blok-cell.doel-cel, .blok-blocked.doel-cel {
+  background: rgba(201,168,76,0.2) !important;
+  outline: 2px dashed var(--gold);
+  outline-offset: -2px;
+  cursor: pointer;
+}
+.terrein-sel { pointer-events: all !important; cursor: pointer; }
+.drag-toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+  background: var(--dark); color: white; padding: 0.6rem 1.25rem; border-radius: 8px;
+  font-size: 0.82rem; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 500;
+  opacity: 0; transition: opacity 0.2s; pointer-events: none; white-space: nowrap; }
+.drag-toast.show { opacity: 1; }
+/* Selectie-banner */
+#selectie-banner {
+  display: none; position: fixed; top: 62px; left: 0; right: 0;
+  background: var(--gold); color: var(--dark); padding: 0.5rem 1rem;
+  font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 600;
+  z-index: 90; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+#selectie-banner.actief { display: block; }
+#selectie-banner button { background: var(--dark); color: white; border: none;
+  border-radius: 5px; padding: 0.2rem 0.75rem; margin-left: 1rem;
+  cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.8rem; }
 </style>
 </head>
 <body>
@@ -415,6 +447,7 @@ body { overscroll-behavior: none; }
   <div id="kk-container"></div>
 </div>
 <div class="drag-toast" id="drag-toast"></div>
+<div id="selectie-banner"><span id="selectie-tekst">Kies een doelcel</span><button onclick="annuleerSelectie()">✕ Annuleren</button></div>
 </main>
 
 <div class="bottom-nav" id="bottom-nav">
@@ -633,8 +666,8 @@ let trainingen = [
   {id:209,teamId:7, dag:'Vrijdag',  blok:'laat', terreinId:'CV'},
   // U14 IP — laat Ma/Wo/Vr → Ma→Wo→Vr ✓  1×KG(Wo, deelt met U15IP)
   {id:210,teamId:8, dag:'Maandag',  blok:'laat', terreinId:'CV'},
-  {id:211,teamId:8, dag:'Woensdag', blok:'laat', terreinId:'KG'},
-  {id:212,teamId:8, dag:'Vrijdag',  blok:'laat', terreinId:'BV'},
+  {id:211,teamId:8, dag:'Woensdag', blok:'namiddag', terreinId:'KG'},
+  {id:212,teamId:8, dag:'Vrijdag',  blok:'namiddag', terreinId:'BV'},
 
   // U17 GEW — vroeg Di/Do → Di→Do 1dag ✓  2×KG
   {id:213,teamId:9, dag:'Dinsdag',   blok:'vroeg',terreinId:'KG'},
@@ -1322,8 +1355,8 @@ function getWeekStart(offset) {
 }
 
 
-// ─── KALENDER DRAG & DROP ────────────────────────────
-let dragState = null;
+// ─── KALENDER KLIK-SELECTIE ─────────────────────────
+let geselecteerd = null; // { trainingId, teamId, dag, blok }
 
 function showDragToast(msg) {
   const el = document.getElementById('drag-toast');
@@ -1331,20 +1364,29 @@ function showDragToast(msg) {
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(el._t);
-  el._t = setTimeout(() => el.classList.remove('show'), 2200);
+  el._t = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+function annuleerSelectie() {
+  geselecteerd = null;
+  document.querySelectorAll('.geselecteerd').forEach(el => el.classList.remove('geselecteerd'));
+  document.querySelectorAll('.doel-cel').forEach(el => el.classList.remove('doel-cel'));
+  const banner = document.getElementById('selectie-banner');
+  if (banner) banner.classList.remove('actief');
 }
 
 function verplaatsTraining(trainingId, nieuweDag, nieuwBlok) {
   const t = trainingen.find(x => x.id === trainingId);
-  if (!t || (t.dag === nieuweDag && t.blok === nieuwBlok)) return;
+  if (!t || (t.dag === nieuweDag && t.blok === nieuwBlok)) { annuleerSelectie(); return; }
   const team = teams.find(tm => tm.id === t.teamId);
   const pair = GEKOPPELD_PAIRS.find(p => p.includes(t.teamId));
   const lijst = pair
     ? trainingen.filter(x => pair.includes(x.teamId) && x.dag === t.dag && x.blok === t.blok)
     : [t];
   lijst.forEach(x => { x.dag = nieuweDag; x.blok = nieuwBlok; });
+  annuleerSelectie();
   saveState(); renderKalender(); renderTeams();
-  showDragToast('\u2713 ' + (team?.naam||'?') + ' \u2192 ' + nieuweDag + ' ' + (nieuwBlok==='vroeg'?'vroeg':'laat'));
+  showDragToast('\u2713 ' + (team?.naam||'?') + ' \u2192 ' + nieuweDag + ' ' + (nieuwBlok==='namiddag'?'namiddag':nieuwBlok==='vroeg'?'vroeg':'laat'));
 }
 
 function renderKalender() {
@@ -1370,7 +1412,9 @@ function renderKalender() {
     const b = BLOK[blokKey];
     const label = document.createElement('div');
     label.className = 'blok-row-label';
-    label.innerHTML = (blokKey==='vroeg'?'\U0001f305':'\U0001f319') + ' ' + (blokKey==='vroeg'?'Vroeg':'Laat') + '<br><small style="font-weight:400;opacity:0.8">' + b.label + '</small>';
+    const ico = blokKey==='namiddag' ? '\U0001f55e' : blokKey==='vroeg' ? '\U0001f305' : '\U0001f319';
+    const naam = blokKey==='namiddag' ? 'Namiddag' : blokKey==='vroeg' ? 'Vroeg' : 'Laat';
+    label.innerHTML = ico + ' ' + naam + '<br><small style="font-weight:400;opacity:0.8">' + b.label + '</small>';
     grid.appendChild(label);
 
     DAGEN_WEEK.forEach(dag => {
@@ -1380,30 +1424,16 @@ function renderKalender() {
       const cell = document.createElement('div');
       cell.className = geblokkeerd && dagT.length===0 ? 'blok-blocked' : 'blok-cell';
 
-      // DROP op cel
-      cell.addEventListener('dragover', e => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        cell.style.outline = '2px dashed var(--gold)';
-        cell.style.background = 'rgba(201,168,76,0.15)';
-      });
-      cell.addEventListener('dragleave', () => {
-        cell.style.outline = '';
-        cell.style.background = '';
-      });
-      cell.addEventListener('drop', e => {
-        e.preventDefault();
-        cell.style.outline = '';
-        cell.style.background = '';
-        if (!dragState) return;
-        verplaatsTraining(dragState.trainingId, dag, blokKey);
-        dragState = null;
+      // Klik op cel = doelcel als er een selectie actief is
+      cell.addEventListener('click', () => {
+        if (!geselecteerd) return;
+        verplaatsTraining(geselecteerd.trainingId, dag, blokKey);
       });
 
       if (geblokkeerd && dagT.length===0) {
-        cell.innerHTML = '<span>senioren<br>gereserveerd</span>';
+        cell.innerHTML = '<span style="pointer-events:none">senioren<br>gereserveerd</span>';
       } else if (dagT.length===0) {
-        cell.innerHTML = '<div class="blok-empty">\u2014</div>';
+        cell.innerHTML = '<div class="blok-empty" style="pointer-events:none">\u2014</div>';
       } else {
         dagT.forEach(t => {
           const team = teams.find(tm => tm.id===t.teamId);
@@ -1411,18 +1441,18 @@ function renderKalender() {
           const zone = getZone(t);
           const trr = terreinen.find(x => x.id===t.terreinId);
           const conflict = checkConflict(t);
+          const isGeselecteerd = geselecteerd && geselecteerd.trainingId === t.id;
 
           const ev = document.createElement('div');
-          ev.className = 'blok-event ' + getEventClass(team.categorie);
-          ev.draggable = true;
-          ev.style.cursor = 'grab';
+          ev.className = 'blok-event ' + getEventClass(team.categorie) + (isGeselecteerd ? ' geselecteerd' : '');
 
-          // Naam tekst (geen HTML children die drag blokkeren)
-          ev.innerHTML = '<span style="display:block;font-weight:600;pointer-events:none">' +
-            team.naam + (zone?' <small style=\'opacity:0.7\'>'+zone+'</small>':'') +
-            (conflict?' \u26a0':'') + '</span>';
+          // Naam
+          const nd = document.createElement('div');
+          nd.style.cssText = 'font-weight:600;font-size:0.69rem;pointer-events:none;';
+          nd.textContent = team.naam + (zone ? ' ' + zone : '') + (conflict ? ' \u26a0' : '');
+          ev.appendChild(nd);
 
-          // Terrein select — APART toegevoegd na innerHTML
+          // Terrein select
           const tSel = document.createElement('select');
           tSel.style.cssText = 'display:block;width:100%;border:none;background:transparent;font-size:0.66rem;color:inherit;cursor:pointer;outline:none;margin-top:2px;opacity:0.8;';
           terreinen.forEach(trOpt => {
@@ -1431,6 +1461,7 @@ function renderKalender() {
             o.selected = trOpt.id === t.terreinId;
             tSel.appendChild(o);
           });
+          tSel.addEventListener('click', e => e.stopPropagation());
           tSel.addEventListener('change', e => {
             e.stopPropagation();
             const nt = e.target.value;
@@ -1440,24 +1471,27 @@ function renderKalender() {
             saveState(); renderKalender(); renderTeams();
             showDragToast('\u2713 Terrein \u2192 ' + (terreinen.find(tr=>tr.id===nt)?.naam||'?'));
           });
-          // Voorkom dat select de drag start of stopt
-          tSel.addEventListener('mousedown', e => e.stopPropagation());
           ev.appendChild(tSel);
 
-          // Drag events op ev
-          ev.addEventListener('dragstart', e => {
+          // Klik op event = selecteren of deselecteren
+          ev.addEventListener('click', e => {
             e.stopPropagation();
-            dragState = { trainingId: t.id, teamId: t.teamId, dag: t.dag, blok: t.blok };
-            setTimeout(() => ev.style.opacity = '0.4', 0);
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', String(t.id));
-          });
-          ev.addEventListener('dragend', () => {
-            ev.style.opacity = '1';
-            dragState = null;
-            document.querySelectorAll('.blok-cell,.blok-blocked').forEach(el => {
-              el.style.outline = ''; el.style.background = '';
-            });
+            if (geselecteerd && geselecteerd.trainingId === t.id) {
+              annuleerSelectie();
+              return;
+            }
+            annuleerSelectie();
+            geselecteerd = { trainingId: t.id, teamId: t.teamId, dag, blok: blokKey };
+            ev.classList.add('geselecteerd');
+            // Markeer alle andere cellen als doelcel
+            document.querySelectorAll('.blok-cell,.blok-blocked').forEach(c => c.classList.add('doel-cel'));
+            cell.classList.remove('doel-cel');
+            const banner = document.getElementById('selectie-banner');
+            const tekst = document.getElementById('selectie-tekst');
+            if (banner && tekst) {
+              tekst.textContent = '\u2713 ' + team.naam + ' geselecteerd — klik op doelcel om te verplaatsen';
+              banner.classList.add('actief');
+            }
           });
 
           cell.appendChild(ev);
@@ -1790,6 +1824,7 @@ function exportPDF(viewName) {
 
 window.showView = showView; window.openTrainingModal = openTrainingModal;
 window.openTeamModal = openTeamModal; window.changeWeek = changeWeek;
+window.annuleerSelectie = annuleerSelectie;
 window.exportPDF = exportPDF;
 window.printView = printView;
 window.closeModal = closeModal; window.saveTraining = saveTraining;
